@@ -1,2 +1,4 @@
 Pyrogram~=2.0.106
 TgCrypto~=1.2.5
+splitwise~=3.0.0
+psycopg~=3.2.1
