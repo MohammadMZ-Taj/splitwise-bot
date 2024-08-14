@@ -7,10 +7,10 @@ from pyrogram import Client
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from db_connection import select_user, add_user, delete_user
-from models import Account, QueryData, Status, ExpenseStatus, SplitShare
+from models import Account, QueryData, Status, ExpenseStatus, DynamicQueryData
 from settings import PROXY, BOT_NAME, BOT_TOKEN, SENDER_EMAIL, HOST, PORT, PASSWORD, SUBJECT
 from splitwise_connection import search_user, get_groups, get_members_equally, get_members_exact_amount, \
-    get_members_percentage, get_members_share
+    get_members_percentage, get_members_share, get_user_name, get_members_paid, get_group_name
 
 if not PROXY:
     client = Client(name=BOT_NAME, bot_token=BOT_TOKEN)
@@ -73,10 +73,12 @@ def handle_message(bot: Client, message: Message):  # noqa
     chat_id = message.chat.id
     msg = message.text
     if msg:
+        chat_acc = chatId_account.get(chat_id, None)
         if msg.startswith('/start'):
-            if acc := chatId_account.get(chat_id, None):
-                name, email, _ = search_user(user_id=acc.account_id)
-                acc.email = email
+            if chat_acc:
+                name, email, _ = search_user(user_id=chat_acc.account_id)
+                chat_acc.email = email
+                chat_acc.expense = ExpenseStatus()
                 bot.send_message(chat_id, f'Hi {name}\nWelcome to splitwise!\n\n'
                                           f'Be aware that you must have added me to your splitwise groups',
                                  reply_markup=home)
@@ -84,8 +86,7 @@ def handle_message(bot: Client, message: Message):  # noqa
                 bot.send_message(chat_id, f'Welcome to splitwise!\n\nFirst add me to your splitwise groups\n'
                                           f'Then enter your email here to verify', reply_markup=about_help)
                 chatId_account[chat_id] = Account()
-        else:
-            chat_acc = chatId_account[chat_id]
+        elif chat_acc:
             if chat_acc.status in [Status.START, Status.CHANGE_EMAIL]:
                 if send_email(msg, chat_acc):
                     ch_mail = ''
@@ -96,12 +97,13 @@ def handle_message(bot: Client, message: Message):  # noqa
                     chat_acc.email = msg
                     chat_acc.verification.is_verify = False
                     chat_acc.verification.start_time = datetime.now()
+                    chat_acc.expense = ExpenseStatus()
                     bot.send_message(chat_id, ch_mail + 'Check your email and enter Verification code here:\n'
                                                         '(You have 3 chances and 2 minutes)')
                 else:
                     bot.send_message(chat_id, 'Something went wrong!\nEnter your email again',
-                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Back',
-                                                                                              QueryData.BACK)]]) if chat_acc.status == Status.CHANGE_EMAIL else None)
+                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Back', QueryData.BACK)]])
+                                     if chat_acc.status == Status.CHANGE_EMAIL else None)
             elif chat_acc.status == Status.SEND_EMAIL and not chat_acc.verification.is_verify:
                 if chat_acc.verification.chance and chat_acc.verification.start_time + timedelta(
                         minutes=2) >= datetime.now():
@@ -130,48 +132,66 @@ def handle_message(bot: Client, message: Message):  # noqa
                 elif chat_acc.status == QueryData.AMOUNT:
                     if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
                         chat_acc.expense.amount = msg
-                        bot.send_message(chat_id, text='Set Details of expense', reply_markup=expense_details(chat_acc))
+                        if not chat_acc.expense.paid_shares:
+                            chat_acc.expense.paid_shares.update({str(chat_acc.account_id): chat_acc.expense.amount})
+                        bot.send_message(chat_id, text='Set Paid shares',
+                                         reply_markup=InlineKeyboardMarkup(
+                                             get_members_paid(chat_acc.expense.selected_group_id,
+                                                              InlineKeyboardButton, chat_acc.expense.paid_shares) + [
+                                                 [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                         chat_acc.status = None
                     else:
                         bot.send_message(chat_id, 'invalid number\nEnter amount again:')
-                elif chat_acc.status.startswith('ua'):
+                elif chat_acc.status.startswith(DynamicQueryData.PAID):
                     if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
-                        u_id = chat_acc.status[2:chat_acc.status.find('_')]
-                        chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare())
-                        chat_acc.expense.split_share[u_id].paid_share = msg
+                        u_id = chat_acc.status[2:]
+                        chat_acc.expense.paid_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                        chat_acc.expense.paid_shares[u_id] = msg
+                        bot.send_message(chat_id, text='Set Paid shares',
+                                         reply_markup=InlineKeyboardMarkup(
+                                             get_members_paid(chat_acc.expense.selected_group_id,
+                                                              InlineKeyboardButton, chat_acc.expense.paid_shares) + [
+                                                 [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
+                elif chat_acc.status.startswith(DynamicQueryData.EXACT_AMOUNT):
+                    if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
+                        u_id = chat_acc.status[2:]
+                        chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                        chat_acc.expense.owed_shares[u_id] = msg
                         bot.send_message(chat_id, text='Select users and enter amounts:',
                                          reply_markup=InlineKeyboardMarkup(
                                              get_members_exact_amount(chat_acc.expense.selected_group_id,
                                                                       InlineKeyboardButton,
-                                                                      chat_acc.expense.split_share) + [
+                                                                      chat_acc.expense.owed_shares) + [
                                                  [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                         chat_acc.status = None
                     else:
                         bot.send_message(chat_id, 'invalid number\nEnter amount again:')
-                elif chat_acc.status.startswith('up') and chat_acc.status.endswith('e'):
+                elif chat_acc.status.startswith(DynamicQueryData.PERCENTAGE) and chat_acc.status.endswith(
+                        DynamicQueryData.ENTER_AMOUNT):
                     if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
-                        u_id = chat_acc.status[2:chat_acc.status.find('_')]
-                        chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare())
-                        chat_acc.expense.split_share[u_id].paid_share = msg + ' %'
+                        u_id = chat_acc.status[2:-1]
+                        chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                        chat_acc.expense.owed_shares[u_id] = msg + ' %'
                         bot.send_message(chat_id, text='Select users and enter amounts:',
                                          reply_markup=InlineKeyboardMarkup(
                                              get_members_percentage(chat_acc.expense.selected_group_id,
                                                                     InlineKeyboardButton,
-                                                                    chat_acc.expense.split_share) + [
+                                                                    chat_acc.expense.owed_shares) + [
                                                  [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                         chat_acc.status = None
                     else:
                         bot.send_message(chat_id, 'invalid number\nEnter amount again:')
-                elif chat_acc.status.startswith('us') and chat_acc.status.endswith('e'):
+                elif chat_acc.status.startswith(DynamicQueryData.SHARE) and chat_acc.status.endswith(
+                        DynamicQueryData.ENTER_AMOUNT):
                     if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
-                        u_id = chat_acc.status[2:chat_acc.status.find('_')]
-                        chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare())
-                        chat_acc.expense.split_share[u_id].paid_share = msg
+                        u_id = chat_acc.status[2:-1]
+                        chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                        chat_acc.expense.owed_shares[u_id] = msg
                         bot.send_message(chat_id, text='Select users and enter amounts:',
                                          reply_markup=InlineKeyboardMarkup(
                                              get_members_share(chat_acc.expense.selected_group_id,
-                                                                    InlineKeyboardButton,
-                                                                    chat_acc.expense.split_share) + [
+                                                               InlineKeyboardButton,
+                                                               chat_acc.expense.owed_shares) + [
                                                  [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                         chat_acc.status = None
                     else:
@@ -206,10 +226,10 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
             group_keys.append([InlineKeyboardButton('Back', QueryData.BACK)])
             bot.edit_message_text(chat_id, message_id=msg_id, text='Select your group:',
                                   reply_markup=InlineKeyboardMarkup(group_keys))
-        elif query_data.startswith('g'):
-            g_id, g_name = query_data[1:query_data.find('_')], query_data[query_data.find('_') + 1:]
+        elif query_data.startswith(DynamicQueryData.GROUP):
+            g_id = query_data[2:]
             chat_acc.expense.selected_group_id = int(g_id)
-            chat_acc.expense.selected_group_name = g_name
+            chat_acc.expense.selected_group_name = get_group_name(g_id)
             bot.edit_message_text(chat_id, message_id=msg_id, text='Set Details of expense',
                                   reply_markup=expense_details(chat_acc))
         elif query_data == QueryData.DESCRIPTION:
@@ -224,105 +244,117 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
         elif query_data == QueryData.SPLIT_BY:
             bot.edit_message_text(chat_id, message_id=msg_id, text='Split by:', reply_markup=split_by)
         elif chat_acc.expense.selected_group_id:
-            if query_data == QueryData.EQUALLY:
-                chat_acc.expense.split_type = 'EQUALLY'
-                if not chat_acc.expense.split_share:
-                    chat_acc.expense.split_share.update({str(chat_acc.account_id): SplitShare('✅')})
+            if query_data.startswith(DynamicQueryData.PAID):
+                chat_acc.status = query_data
+                bot.edit_message_text(chat_id, message_id=msg_id, text='Enter paid share Amount:')
+            elif query_data == QueryData.EQUALLY:
+                if chat_acc.expense.split_type != 'EQUALLY':
+                    chat_acc.expense.owed_shares.clear()
+                    chat_acc.expense.split_type = 'EQUALLY'
+                if not chat_acc.expense.owed_shares:
+                    chat_acc.expense.owed_shares.update({str(chat_acc.account_id): '✅'})
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_equally(chat_acc.expense.selected_group_id, InlineKeyboardButton,
-                                                              chat_acc.expense.split_share) + [
+                                                              chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
             elif query_data == QueryData.EXACT_AMOUNT:
-                chat_acc.expense.split_type = 'EXACT AMOUNT'
-                if not chat_acc.expense.split_share:
-                    chat_acc.expense.split_share.update(
-                        {str(chat_acc.account_id): SplitShare(chat_acc.expense.amount)})
+                if chat_acc.expense.split_type != 'EXACT AMOUNT':
+                    chat_acc.expense.owed_shares.clear()
+                    chat_acc.expense.split_type = 'EXACT AMOUNT'
+                if not chat_acc.expense.owed_shares:
+                    chat_acc.expense.owed_shares.update({str(chat_acc.account_id): chat_acc.expense.amount})
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users and enter amounts:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_exact_amount(chat_acc.expense.selected_group_id,
                                                                    InlineKeyboardButton,
-                                                                   chat_acc.expense.split_share) + [
+                                                                   chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
             elif query_data == QueryData.PERCENTAGE:
-                chat_acc.expense.split_type = 'PERCENTAGE'
-                if not chat_acc.expense.split_share:
-                    chat_acc.expense.split_share.update({str(chat_acc.account_id): SplitShare('100 %')})
+                if chat_acc.expense.split_type != 'PERCENTAGE':
+                    chat_acc.expense.owed_shares.clear()
+                    chat_acc.expense.split_type = 'PERCENTAGE'
+                if not chat_acc.expense.owed_shares:
+                    chat_acc.expense.owed_shares.update({str(chat_acc.account_id): '100 %'})
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users and enter values:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_percentage(chat_acc.expense.selected_group_id,
-                                                                 InlineKeyboardButton, chat_acc.expense.split_share) + [
+                                                                 InlineKeyboardButton, chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
             elif query_data == QueryData.SHARE:
-                chat_acc.expense.split_type = 'SHARE'
-                if not chat_acc.expense.split_share:
-                    chat_acc.expense.split_share.update({str(chat_acc.account_id): SplitShare('1')})
+                if chat_acc.expense.split_type != 'SHARE':
+                    chat_acc.expense.owed_shares.clear()
+                    chat_acc.expense.split_type = 'SHARE'
+                if not chat_acc.expense.owed_shares:
+                    chat_acc.expense.owed_shares.update({str(chat_acc.account_id): '1'})
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users and enter values:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_share(chat_acc.expense.selected_group_id, InlineKeyboardButton,
-                                                            chat_acc.expense.split_share) + [
+                                                            chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
-            elif query_data.startswith('ue'):
+            elif query_data == QueryData.CONTINUE:
+                bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=expense_details(chat_acc))
+            elif query_data.startswith(DynamicQueryData.EQUALLY):
                 u_id = query_data[2:]
-                if not chat_acc.expense.split_share.pop(u_id, None):
-                    chat_acc.expense.split_share.update({u_id: SplitShare('✅')})
+                if not chat_acc.expense.owed_shares.pop(u_id, None):
+                    chat_acc.expense.owed_shares.update({u_id: '✅'})
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_equally(chat_acc.expense.selected_group_id, InlineKeyboardButton,
-                                                              chat_acc.expense.split_share) + [
+                                                              chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
-            elif query_data.startswith('ua'):
+            elif query_data.startswith(DynamicQueryData.EXACT_AMOUNT):
                 chat_acc.status = query_data
-                u_name = query_data[query_data.find('_') + 1:]
+                u_name = get_user_name(int(query_data[2:]))
                 bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter amount for {u_name}:')
-            elif query_data.startswith('up'):
-                if query_data.endswith('p'):
-                    u_id = query_data[2:query_data.find('_')]
-                    chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare('0 %'))
-                    amount = int(chat_acc.expense.split_share.get(u_id).paid_share.split()[0])
+            elif query_data.startswith(DynamicQueryData.PERCENTAGE):
+                if query_data.endswith(DynamicQueryData.PLUS):
+                    u_id = query_data[2:-1]
+                    chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0 %')
+                    amount = int(chat_acc.expense.owed_shares.get(u_id).split()[0])
                     if amount < 100:
-                        chat_acc.expense.split_share[u_id].paid_share = str(amount + 1) + ' %'
+                        chat_acc.expense.owed_shares[u_id] = str(amount + 1) + ' %'
                         bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
                             get_members_percentage(chat_acc.expense.selected_group_id,
-                                                   InlineKeyboardButton, chat_acc.expense.split_share) + [
+                                                   InlineKeyboardButton, chat_acc.expense.owed_shares) + [
                                 [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
-                elif query_data.endswith('m'):
-                    u_id = query_data[2:query_data.find('_')]
-                    chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare('0 %'))
-                    amount = int(chat_acc.expense.split_share.get(u_id).paid_share.split()[0])
+                elif query_data.endswith(DynamicQueryData.MINUS):
+                    u_id = query_data[2:-1]
+                    chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0 %')
+                    amount = int(chat_acc.expense.owed_shares.get(u_id).split()[0])
                     if 0 < amount:
-                        chat_acc.expense.split_share[u_id].paid_share = str(amount - 1) + ' %'
+                        chat_acc.expense.owed_shares[u_id] = str(amount - 1) + ' %'
                         bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
                             get_members_percentage(chat_acc.expense.selected_group_id,
-                                                   InlineKeyboardButton, chat_acc.expense.split_share) + [
+                                                   InlineKeyboardButton, chat_acc.expense.owed_shares) + [
                                 [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                 else:
                     chat_acc.status = query_data
-                    u_name = query_data[query_data.find('_') + 1:-1]
+                    u_name = get_user_name(int(query_data[2:-1]))
                     bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter percent for {u_name}:')
-            elif query_data.startswith('us'):
-                if query_data.endswith('p'):
-                    u_id = query_data[2:query_data.find('_')]
-                    chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare())
-                    amount = int(chat_acc.expense.split_share.get(u_id).paid_share.split()[0])
-                    chat_acc.expense.split_share[u_id].paid_share = str(amount + 1)
+            elif query_data.startswith(DynamicQueryData.SHARE):
+                if query_data.endswith(DynamicQueryData.PLUS):
+                    u_id = query_data[2:-1]
+                    chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                    amount = int(chat_acc.expense.owed_shares.get(u_id).split()[0])
+                    chat_acc.expense.owed_shares[u_id] = str(amount + 1)
                     bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
                         get_members_share(chat_acc.expense.selected_group_id,
-                                               InlineKeyboardButton, chat_acc.expense.split_share) + [
+                                          InlineKeyboardButton, chat_acc.expense.owed_shares) + [
                             [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
-                elif query_data.endswith('m'):
-                    u_id = query_data[2:query_data.find('_')]
-                    chat_acc.expense.split_share[u_id] = chat_acc.expense.split_share.get(u_id, SplitShare())
-                    amount = int(chat_acc.expense.split_share.get(u_id).paid_share.split()[0])
+                elif query_data.endswith(DynamicQueryData.MINUS):
+                    u_id = query_data[2:-1]
+                    chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0')
+                    amount = int(chat_acc.expense.owed_shares.get(u_id).owed_shares.split()[0])
                     if 0 < amount:
-                        chat_acc.expense.split_share[u_id].paid_share = str(amount - 1)
+                        chat_acc.expense.owed_shares[u_id] = str(amount - 1)
                         bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
                             get_members_share(chat_acc.expense.selected_group_id,
-                                                   InlineKeyboardButton, chat_acc.expense.split_share) + [
+                                              InlineKeyboardButton, chat_acc.expense.owed_shares) + [
                                 [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                 else:
                     chat_acc.status = query_data
-                    u_name = query_data[query_data.find('_') + 1:-1]
+                    u_name = get_user_name(int(query_data[2:-1]))
                     bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter share value for {u_name}:')
     else:
         bot.send_message(chat_id, "You aren't verify yet\n\nFirst add me to your splitwise groups\n"

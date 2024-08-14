@@ -15,13 +15,8 @@ class ExpenseStatus:
         self.description = ''
         self.currency = 'USD'
         self.split_type = ''
-        self.split_share = dict()  # user_id: SplitShare()
-
-
-class SplitShare:
-    def __init__(self, paid_share='0', owed_share='0'):
-        self.paid_share = paid_share
-        self.owed_share = owed_share
+        self.paid_shares = dict()  # user_id: PaidShare
+        self.owed_shares = dict()  # user_id: OwedShare
 
 
 class Verification:
@@ -55,3 +50,15 @@ class QueryData:
     SPLIT_BY = 's13'
     CONTINUE = 's14'
     SUBMIT = 's15'
+
+
+class DynamicQueryData:
+    GROUP = 'da'
+    PAID = 'db'
+    EQUALLY = 'dc'
+    EXACT_AMOUNT = 'dd'
+    PERCENTAGE = 'de'
+    SHARE = 'df'
+    ENTER_AMOUNT = 'dg'
+    PLUS = 'dh'
+    MINUS = 'di'
