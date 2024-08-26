@@ -6,8 +6,8 @@ from smtplib import SMTP_SSL
 from pyrogram import Client
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from db_connection import select_user, add_user, delete_user
-from models import Account, QueryData, Status, ExpenseStatus, DynamicQueryData
+from db_connection import select_user, add_user, delete_user, select_alias, add_alias, delete_alias, update_alias
+from models import Account, QueryData, Status, ExpenseStatus, DynamicQueryData, Alias
 from settings import PROXY, BOT_NAME, BOT_TOKEN, SENDER_EMAIL, HOST, PORT, PASSWORD, SUBJECT
 from splitwise_connection import search_user, get_groups, get_members_equally, get_members_exact_amount, \
     get_members_percentage, get_members_share, get_user_name, get_members_paid, get_group_name
@@ -38,6 +38,17 @@ split_by = InlineKeyboardMarkup([
     [InlineKeyboardButton('Equally', QueryData.EQUALLY), InlineKeyboardButton('Exact amount', QueryData.EXACT_AMOUNT)],
     [InlineKeyboardButton('Percentage', QueryData.PERCENTAGE), InlineKeyboardButton('Share', QueryData.SHARE)]
 ])
+
+
+def get_aliases(group_id, user_id=None):
+    buttons = []
+    if user_id:
+        for _, alias, cost in select_alias(group_id):  # FIXME: update this menu  -->   alias_cost  -  count  -  ⬆  -  ⬇
+            buttons.append([InlineKeyboardButton(f"{alias}: {cost}", f"{DynamicQueryData.ALIAS}{user_id}_{alias}")])
+    else:
+        for _, alias, cost in select_alias(group_id):
+            buttons.append([InlineKeyboardButton(f"{alias}: {cost}", f"{DynamicQueryData.ALIAS}{alias}")])
+    return buttons
 
 
 def send_email(to_email, chat_acc: Account):
@@ -164,6 +175,39 @@ def handle_message(bot: Client, message: Message):  # noqa
                         chat_acc.status = None
                     else:
                         bot.send_message(chat_id, 'invalid number\nEnter amount again:')
+                elif chat_acc.status == QueryData.ADD_ALIAS:  # FIXME: add selected user
+                    if not chat_acc.new_alias.new_name:
+                        chat_acc.new_alias = Alias(msg)
+                        chat_acc.new_alias.new_name = True
+                        bot.send_message(chat_id, text='Enter cost of alias:')
+                    else:
+                        if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
+                            chat_acc.new_alias.cost = round(float(msg), 2)
+                            add_alias(chat_acc.expense.selected_group_id, chat_acc.new_alias.name,
+                                      chat_acc.new_alias.cost)
+                            chat_acc.new_alias.new_name = False
+                            chat_acc.status = None
+                            bot.send_message(chat_id, text='Set Details of expense',
+                                             reply_markup=expense_details(chat_acc))
+
+                        else:
+                            bot.send_message(chat_id, 'invalid number\nEnter amount again:')
+                elif chat_acc.status == QueryData.EDIT_ALIAS:  # todo: add menu
+                    if not chat_acc.new_alias.new_name:
+                        chat_acc.new_alias.new_name = msg
+                        bot.send_message(chat_id, text='Enter cost of alias:')
+                    else:
+                        if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
+                            chat_acc.new_alias.cost = round(float(msg), 2)
+                            update_alias(chat_acc.expense.selected_group_id, chat_acc.new_alias.name,
+                                         chat_acc.new_alias.new_name, chat_acc.new_alias.cost)
+                            chat_acc.new_alias.new_name = ''
+                            chat_acc.status = None
+                            bot.send_message(chat_id, text='Set Details of expense',
+                                             reply_markup=expense_details(chat_acc))
+
+                        else:
+                            bot.send_message(chat_id, 'invalid number\nEnter amount again:')
                 elif chat_acc.status.startswith(DynamicQueryData.PERCENTAGE) and chat_acc.status.endswith(
                         DynamicQueryData.ENTER_AMOUNT):
                     if msg.count('.') <= 1 and msg.replace('.', '').isdigit():
@@ -263,7 +307,7 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                     chat_acc.expense.split_type = 'EXACT AMOUNT'
                 if not chat_acc.expense.owed_shares:
                     chat_acc.expense.owed_shares.update({str(chat_acc.account_id): chat_acc.expense.amount})
-                bot.edit_message_text(chat_id, message_id=msg_id, text='Select users and enter amounts:',
+                bot.edit_message_text(chat_id, message_id=msg_id, text='Select users then enter amounts:',
                                       reply_markup=InlineKeyboardMarkup(
                                           get_members_exact_amount(chat_acc.expense.selected_group_id,
                                                                    InlineKeyboardButton,
@@ -305,30 +349,62 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
             elif query_data.startswith(DynamicQueryData.EXACT_AMOUNT):
                 chat_acc.status = query_data
                 u_name = get_user_name(int(query_data[2:]))
-                bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter amount for {u_name}:')
+                # FIXME: update this menu  -->   alias_cost  -  count  -  ⬆  -  ⬇
+                bot.edit_message_text(chat_id, message_id=msg_id,
+                                      text=f'Enter amount or Click from aliases for {u_name}:',
+                                      reply_markup=InlineKeyboardMarkup(
+                                          get_aliases(chat_acc.expense.selected_group_id, query_data[2:]) + [
+                                              [InlineKeyboardButton('Add alias', QueryData.ADD_ALIAS),
+                                               InlineKeyboardButton('Edit alias', QueryData.EDIT_ALIAS),
+                                               InlineKeyboardButton('Delete alias', QueryData.DELETE_ALIAS)]]
+                                      ))
+            elif query_data == QueryData.ADD_ALIAS:
+                chat_acc.status = query_data
+                bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter name of alias:')
+            elif query_data in [QueryData.EDIT_ALIAS, QueryData.DELETE_ALIAS]:
+                chat_acc.status = query_data
+                bot.edit_message_text(chat_id, message_id=msg_id, text=f'Click from aliases:',
+                                      reply_markup=InlineKeyboardMarkup(
+                                          get_aliases(chat_acc.expense.selected_group_id)))
+            elif query_data.startswith(DynamicQueryData.ALIAS) and chat_acc.status == QueryData.DELETE_ALIAS:
+                delete_alias(chat_acc.expense.selected_group_id, query_data[2:])
+                bot.edit_message_text(chat_id, message_id=msg_id, text='Set Details of expense',
+                                      reply_markup=expense_details(chat_acc))
+            elif query_data.startswith(DynamicQueryData.ALIAS) and chat_acc.status == QueryData.EDIT_ALIAS:
+                _, alias, cost = select_alias(chat_acc.expense.selected_group_id, query_data[2:])[0]
+                chat_acc.new_alias = Alias(alias, cost)
+                bot.edit_message_text(chat_id, message_id=msg_id, text=f'Enter new name of alias:')
+            elif query_data.startswith(DynamicQueryData.ALIAS):
+                u_id, alias = query_data[2:query_data.find('_')], query_data[query_data.find('_') + 1:]
+                _, _, cost = select_alias(chat_acc.expense.selected_group_id, alias)[0]
+                chat_acc.expense.owed_shares[u_id] = str(cost)
+                bot.edit_message_text(chat_id, message_id=msg_id, text='Select users and enter amounts:',
+                                      reply_markup=InlineKeyboardMarkup(
+                                          get_members_exact_amount(chat_acc.expense.selected_group_id,
+                                                                   InlineKeyboardButton,
+                                                                   chat_acc.expense.owed_shares) + [
+                                              [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
             elif query_data.startswith(DynamicQueryData.PERCENTAGE):
                 if query_data.endswith(DynamicQueryData.PLUS):
                     u_id = query_data[2:-2]
                     chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0 %')
                     amount = float(chat_acc.expense.owed_shares.get(u_id).split()[0])
-                    if amount < 100:
-                        chat_acc.expense.owed_shares[u_id] = (str(
-                            round(amount + 1, 2)) if amount + 1 <= 100 else '100') + ' %'
-                        bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
-                            get_members_percentage(chat_acc.expense.selected_group_id,
-                                                   InlineKeyboardButton, chat_acc.expense.owed_shares) + [
-                                [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
+                    chat_acc.expense.owed_shares[u_id] = (str(
+                        round(amount + 10, 2)) if amount + 10 <= 100 else '100') + ' %'
+                    bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
+                        get_members_percentage(chat_acc.expense.selected_group_id,
+                                               InlineKeyboardButton, chat_acc.expense.owed_shares) + [
+                            [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                 elif query_data.endswith(DynamicQueryData.MINUS):
                     u_id = query_data[2:-2]
                     chat_acc.expense.owed_shares[u_id] = chat_acc.expense.owed_shares.get(u_id, '0 %')
                     amount = float(chat_acc.expense.owed_shares.get(u_id).split()[0])
-                    if 0 < amount:
-                        chat_acc.expense.owed_shares[u_id] = (str(
-                            round(amount - 1, 2)) if amount - 1 >= 0 else '0') + ' %'
-                        bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
-                            get_members_percentage(chat_acc.expense.selected_group_id,
-                                                   InlineKeyboardButton, chat_acc.expense.owed_shares) + [
-                                [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
+                    chat_acc.expense.owed_shares[u_id] = (str(
+                        round(amount - 10, 2)) if amount - 10 >= 0 else '0') + ' %'
+                    bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
+                        get_members_percentage(chat_acc.expense.selected_group_id,
+                                               InlineKeyboardButton, chat_acc.expense.owed_shares) + [
+                            [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
                 else:
                     chat_acc.status = query_data
                     u_name = get_user_name(int(query_data[2:-2]))

@@ -5,6 +5,14 @@ class Account:
         self.email = email
         self.verification = Verification()
         self.expense = ExpenseStatus()
+        self.new_alias = Alias()
+
+
+class Alias:
+    def __init__(self, name='', cost=0):
+        self.name = name
+        self.cost = cost
+        self.new_name = ''
 
 
 class ExpenseStatus:
@@ -49,7 +57,10 @@ class QueryData:
     CURRENCY = 's12'
     SPLIT_BY = 's13'
     CONTINUE = 's14'
-    SUBMIT = 's15'
+    ADD_ALIAS = 's15'
+    DELETE_ALIAS = 's16'
+    EDIT_ALIAS = 's17'
+    SUBMIT = 's18'
 
 
 class DynamicQueryData:
@@ -62,3 +73,4 @@ class DynamicQueryData:
     ENTER_AMOUNT = 'dg'
     PLUS = 'dh'
     MINUS = 'di'
+    ALIAS = 'dj'
