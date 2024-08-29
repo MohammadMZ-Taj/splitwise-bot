@@ -60,7 +60,8 @@ class QueryData:
     ADD_ALIAS = 's15'
     DELETE_ALIAS = 's16'
     EDIT_ALIAS = 's17'
-    SUBMIT = 's18'
+    CONTINUE_ALIAS = 's18'
+    SUBMIT = 's19'
 
 
 class DynamicQueryData:
@@ -74,3 +75,4 @@ class DynamicQueryData:
     PLUS = 'dh'
     MINUS = 'di'
     ALIAS = 'dj'
+    EDIT = 'dk'

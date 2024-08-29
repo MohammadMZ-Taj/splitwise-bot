@@ -40,7 +40,6 @@ def get_groups(user_id, func):
 
 
 def get_members_paid(group_id, func, user_val):
-    default_val = '0'
     members: List[Friend] = sObj.getGroup(group_id).getMembers()
     member_keys = []
     for member in members:
@@ -50,17 +49,12 @@ def get_members_paid(group_id, func, user_val):
         ln = member.getLastName()
         name = fn if fn else '' + ln if ln else ''
         mem_id = str(member.getId())
-        if val := user_val.get(mem_id, None):
-            member_keys.append(
-                [func(name, DynamicQueryData.PAID + mem_id), func(val, DynamicQueryData.PAID + mem_id)])
-        else:
-            member_keys.append(
-                [func(name, DynamicQueryData.PAID + mem_id), func(default_val, DynamicQueryData.PAID + mem_id)])
+        val = user_val.get(mem_id, '0')
+        member_keys.append([func(name, DynamicQueryData.PAID + mem_id), func(val, DynamicQueryData.PAID + mem_id)])
     return member_keys
 
 
 def get_members_equally(group_id, func, user_val):
-    default_val = '❌'
     members: List[Friend] = sObj.getGroup(group_id).getMembers()
     member_keys = []
     for member in members:
@@ -70,17 +64,13 @@ def get_members_equally(group_id, func, user_val):
         ln = member.getLastName()
         name = fn if fn else '' + ln if ln else ''
         mem_id = str(member.getId())
-        if val := user_val.get(mem_id, None):
-            member_keys.append(
-                [func(name, DynamicQueryData.EQUALLY + mem_id), func(val, DynamicQueryData.EQUALLY + mem_id)])
-        else:
-            member_keys.append(
-                [func(name, DynamicQueryData.EQUALLY + mem_id), func(default_val, DynamicQueryData.EQUALLY + mem_id)])
+        val = user_val.get(mem_id, '❌')
+        member_keys.append(
+            [func(name, DynamicQueryData.EQUALLY + mem_id), func(val, DynamicQueryData.EQUALLY + mem_id)])
     return member_keys
 
 
 def get_members_exact_amount(group_id, func, user_val):
-    default_val = '0'
     members: List[Friend] = sObj.getGroup(group_id).getMembers()
     member_keys = []
     for member in members:
@@ -90,17 +80,13 @@ def get_members_exact_amount(group_id, func, user_val):
         ln = member.getLastName()
         name = fn if fn else '' + ln if ln else ''
         mem_id = str(member.getId())
-        if val := user_val.get(mem_id, None):
-            member_keys.append(
-                [func(name, DynamicQueryData.EXACT_AMOUNT + mem_id), func(val, DynamicQueryData.EXACT_AMOUNT + mem_id)])
-        else:
-            member_keys.append([func(name, DynamicQueryData.EXACT_AMOUNT + mem_id),
-                                func(default_val, DynamicQueryData.EXACT_AMOUNT + mem_id)])
+        val = user_val.get(mem_id, '0')
+        member_keys.append(
+            [func(name, DynamicQueryData.EXACT_AMOUNT + mem_id), func(val, DynamicQueryData.EXACT_AMOUNT + mem_id)])
     return member_keys
 
 
 def get_members_percentage(group_id, func, user_val):
-    default_val = '0 %'
     members: List[Friend] = sObj.getGroup(group_id).getMembers()
     member_keys = []
     for member in members:
@@ -110,25 +96,17 @@ def get_members_percentage(group_id, func, user_val):
         ln = member.getLastName()
         name = fn if fn else '' + ln if ln else ''
         mem_id = str(member.getId())
-        if val := user_val.get(mem_id, None):
-            member_keys.append([
-                func(name, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func(val, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func('⬆️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.PLUS),
-                func('⬇️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.MINUS)
-            ])
-        else:
-            member_keys.append([
-                func(name, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func(default_val, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func('⬆️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.PLUS),
-                func('⬇️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.MINUS)
-            ])
+        val = user_val.get(mem_id, '0 %')
+        member_keys.append([
+            func(name, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
+            func(val, DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.ENTER_AMOUNT),
+            func('⬆️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.PLUS),
+            func('⬇️', DynamicQueryData.PERCENTAGE + mem_id + DynamicQueryData.MINUS)
+        ])
     return member_keys
 
 
 def get_members_share(group_id, func, user_val):
-    default_val = '0'
     members: List[Friend] = sObj.getGroup(group_id).getMembers()
     member_keys = []
     for member in members:
@@ -138,20 +116,13 @@ def get_members_share(group_id, func, user_val):
         ln = member.getLastName()
         name = fn if fn else '' + ln if ln else ''
         mem_id = str(member.getId())
-        if val := user_val.get(mem_id, None):
-            member_keys.append([
-                func(name, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func(val, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func('⬆️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.PLUS),
-                func('⬇️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.MINUS)
-            ])
-        else:
-            member_keys.append([
-                func(name, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func(default_val, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
-                func('⬆️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.PLUS),
-                func('⬇️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.MINUS)
-            ])
+        val = user_val.get(mem_id, '0')
+        member_keys.append([
+            func(name, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
+            func(val, DynamicQueryData.SHARE + mem_id + DynamicQueryData.ENTER_AMOUNT),
+            func('⬆️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.PLUS),
+            func('⬇️', DynamicQueryData.SHARE + mem_id + DynamicQueryData.MINUS)
+        ])
     return member_keys
 
 
