@@ -34,6 +34,17 @@ def split_by_keys(func):
     ]
 
 
+def expense_details(func, chat_acc):
+    return [
+        [func(f'Group: {chat_acc.expense.selected_group_name}', QueryData.ADD_EXPENSE)],
+        [func(f'Description: {chat_acc.expense.description}', QueryData.DESCRIPTION)],
+        [func(f'Amount: {chat_acc.expense.amount}', QueryData.AMOUNT)],
+        [func(f'Currency: {chat_acc.expense.currency}', QueryData.CURRENCY)],
+        [func(f'Split by: {chat_acc.expense.split_type}', QueryData.SPLIT_BY)],
+        [func('Cancel', QueryData.BACK), func('Submit', QueryData.SUBMIT)]
+    ]
+
+
 def get_aliases(func, group_id, user_id=None, alias_count=None):
     buttons = []
     if user_id:
@@ -76,14 +87,3 @@ def send_email(to_email, chat_acc: Account):
         return False
     chat_acc.verification.code = code
     return True
-
-
-def expense_details(func, chat_acc):
-    return [
-        [func(f'Group: {chat_acc.expense.selected_group_name}', QueryData.ADD_EXPENSE)],
-        [func(f'Description: {chat_acc.expense.description}', QueryData.DESCRIPTION)],
-        [func(f'Amount: {chat_acc.expense.amount}', QueryData.AMOUNT)],
-        [func(f'Currency: {chat_acc.expense.currency}', QueryData.CURRENCY)],
-        [func(f'Split by: {chat_acc.expense.split_type}', QueryData.SPLIT_BY)],
-        [func('Cancel', QueryData.BACK), func('Submit', QueryData.SUBMIT)]
-    ]

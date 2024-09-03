@@ -2,12 +2,14 @@ from datetime import datetime, timedelta
 
 from pyrogram import Client
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from splitwise import Expense
+from splitwise.user import ExpenseUser
 
 from db_connection import select_user, add_user, delete_user, select_alias, add_alias, delete_alias, update_alias
 from models import Account, QueryData, Status, ExpenseStatus, DynamicQueryData, Alias
 from settings import PROXY, BOT_NAME, BOT_TOKEN
 from splitwise_connection import search_user, get_groups, get_members_equally, get_members_exact_amount, \
-    get_members_percentage, get_members_share, get_user_name, get_members_paid, get_group_name
+    get_members_percentage, get_members_share, get_user_name, get_members_paid, get_group_name, sObj
 from utils import send_email, expense_details, get_aliases, home_keys, about_help_keys, change_account_keys, \
     split_by_keys
 
@@ -118,8 +120,8 @@ def handle_message(bot: Client, message: Message):  # noqa
                             if type(owed) == dict:
                                 owed_shares[user_id] = 0
                                 for alias in owed:
-                                    owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                                owed_shares[user_id] = str(owed_shares[user_id])
+                                    owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                                owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                             elif type(owed) == str:
                                 owed_shares[user_id] = owed
                         bot.send_message(chat_id, text='Select users and enter amounts:',
@@ -189,8 +191,8 @@ def handle_message(bot: Client, message: Message):  # noqa
                             if type(owed) == dict:
                                 owed_shares[user_id] = 0
                                 for alias in owed:
-                                    owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                                owed_shares[user_id] = str(owed_shares[user_id])
+                                    owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                                owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                             elif type(owed) == str:
                                 owed_shares[user_id] = owed
                         u_name = get_user_name(u_id)
@@ -278,11 +280,11 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                     if type(owed) == dict:
                         owed_shares[user_id] = 0
                         for alias in owed:
-                            owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                        owed_shares[user_id] = str(owed_shares[user_id])
+                            owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                        owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                     elif type(owed) == str:
                         owed_shares[user_id] = owed
-                sum_of_owed_shares = sum([float(i) for i in list(owed_shares.values())])
+                sum_of_owed_shares = round(sum([float(i) for i in list(owed_shares.values())]), 2)
                 if expense_amount != sum_of_owed_shares:
                     bot.edit_message_text(chat_id, message_id=msg_id,
                                           text=f"Your split is wrong!\n{expense_amount=} but {sum_of_owed_shares=} !",
@@ -290,7 +292,8 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                                               expense_details(InlineKeyboardButton, chat_acc)))
                     return
             elif chat_acc.expense.split_type == 'PERCENTAGE':
-                total_percentages = sum([float(i) for i in list(chat_acc.expense.owed_shares.values())])
+                total_percentages = round(
+                    sum([float(i.split()[0]) for i in list(chat_acc.expense.owed_shares.values())]), 2)
                 if 100 != total_percentages:
                     bot.edit_message_text(chat_id, message_id=msg_id,
                                           text=f"Your split is wrong!\n{total_percentages=} !",
@@ -308,10 +311,106 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                                       reply_markup=InlineKeyboardMarkup(
                                           expense_details(InlineKeyboardButton, chat_acc)))
                 return
-            # todo: submit
-            # fixme: show details in text
-            bot.edit_message_text(chat_id, message_id=msg_id, text='Expense submit successfully',
-                                  reply_markup=InlineKeyboardMarkup(home_keys(InlineKeyboardButton)))
+            expense = Expense()
+            expense.setDescription(chat_acc.expense.description)
+            expense.setCost(chat_acc.expense.amount)
+            expense.setCurrencyCode(chat_acc.expense.currency)
+            expense.setGroupId(chat_acc.expense.selected_group_id)
+            user_expense = dict()
+            for u_id in chat_acc.expense.paid_shares:
+                user_expense[u_id] = ExpenseUser()
+                user_expense[u_id].setId(u_id)
+                user_expense[u_id].setPaidShare(chat_acc.expense.paid_shares[u_id])
+            if chat_acc.expense.split_type == 'EQUALLY':
+                count_users = list(chat_acc.expense.owed_shares.values()).count('✅')
+                rem = expense_amount - count_users * round(expense_amount / count_users, 2)
+                for u_id in chat_acc.expense.owed_shares:
+                    user_expense.setdefault(u_id, ExpenseUser())
+                    user_expense[u_id].setId(u_id)
+                    user_amount = round(expense_amount / count_users, 2)
+                    rem = round(rem, 2)
+                    if rem > 0:
+                        user_amount += 0.01
+                        rem -= 0.01
+                    elif rem < 0:
+                        user_amount -= 0.01
+                        rem += 0.01
+                    user_expense[u_id].setOwedShare(str(user_amount))
+            elif chat_acc.expense.split_type == 'EXACT AMOUNT':
+                owed_shares = dict()
+                aliases = {alias: cost for _, alias, cost in select_alias(chat_acc.expense.selected_group_id)}
+                for u_id in chat_acc.expense.owed_shares:
+                    owed = chat_acc.expense.owed_shares.get(u_id)
+                    if type(owed) == dict:
+                        owed_shares[u_id] = 0
+                        for alias in owed:
+                            owed_shares[u_id] += float(owed[alias]) * aliases.get(alias, 0)
+                        user_expense.setdefault(u_id, ExpenseUser())
+                        user_expense[u_id].setId(u_id)
+                        user_expense[u_id].setOwedShare(str(owed_shares[u_id]))
+                        chat_acc.expense.owed_shares[u_id] = owed_shares[u_id]
+                    elif type(owed) == str:
+                        user_expense.setdefault(u_id, ExpenseUser())
+                        user_expense[u_id].setId(u_id)
+                        user_expense[u_id].setOwedShare(owed)
+            elif chat_acc.expense.split_type == 'PERCENTAGE':
+                sum_of_owed_shares = 0
+                for u_id in chat_acc.expense.owed_shares:
+                    sum_of_owed_shares += round(
+                        float(chat_acc.expense.owed_shares[u_id].split()[0]) * expense_amount / 100, 2)
+                rem = expense_amount - sum_of_owed_shares
+                for u_id in chat_acc.expense.owed_shares:
+                    user_expense.setdefault(u_id, ExpenseUser())
+                    user_expense[u_id].setId(u_id)
+                    user_amount = round(float(chat_acc.expense.owed_shares[u_id].split()[0]) * expense_amount / 100, 2)
+                    rem = round(rem, 2)
+                    if rem > 0:
+                        user_amount += 0.01
+                        rem -= 0.01
+                    elif rem < 0:
+                        user_amount -= 0.01
+                        rem += 0.01
+                    user_expense[u_id].setOwedShare(str(user_amount))
+            elif chat_acc.expense.split_type == 'SHARE':
+                sum_shares = round(sum([float(i) for i in list(chat_acc.expense.owed_shares.values())]), 2)
+                sum_of_owed_shares = 0
+                for u_id in chat_acc.expense.owed_shares:
+                    sum_of_owed_shares += round(float(chat_acc.expense.owed_shares[u_id]) * expense_amount / sum_shares,
+                                                2)
+                rem = expense_amount - sum_of_owed_shares
+                for u_id in chat_acc.expense.owed_shares:
+                    user_expense.setdefault(u_id, ExpenseUser())
+                    user_expense[u_id].setId(u_id)
+                    user_amount = round(float(chat_acc.expense.owed_shares[u_id]) * expense_amount / sum_shares, 2)
+                    rem = round(rem, 2)
+                    if rem > 0:
+                        user_amount += 0.01
+                        rem -= 0.01
+                    elif rem < 0:
+                        user_amount -= 0.01
+                        rem += 0.01
+                    user_expense[u_id].setOwedShare(str(user_amount))
+            expense.setUsers(list(user_expense.values()))
+            obj, errors = sObj.createExpense(expense)
+            print('Accept') if obj else print('Fail')
+            print(errors.getErrors()) if errors else None
+            details = ['Expense submit successfully\n',
+                       f'Group: {chat_acc.expense.selected_group_name}',
+                       f'Description: {chat_acc.expense.description}',
+                       f'Amount: {chat_acc.expense.amount}',
+                       f'Currency: {chat_acc.expense.currency}',
+                       f'Split by: {chat_acc.expense.split_type}',
+                       ]
+            details += ['Paid by:',
+                        *[f'{get_user_name(u_id)}: {chat_acc.expense.paid_shares[u_id]}' for u_id in
+                          chat_acc.expense.paid_shares],
+                        'Owed by:',
+                        *[f'{get_user_name(u_id)}: {chat_acc.expense.owed_shares[u_id]}' for u_id in
+                          chat_acc.expense.owed_shares]
+                        ]
+            bot.edit_message_text(chat_id, message_id=msg_id, text='\n'.join(details))
+            bot.send_message(chat_id, 'Choose an option',
+                             reply_markup=InlineKeyboardMarkup(home_keys(InlineKeyboardButton)))
         elif query_data == QueryData.ADD_EXPENSE:
             group_keys = []
             i = 0
@@ -372,8 +471,8 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                     if type(owed) == dict:
                         owed_shares[user_id] = 0
                         for alias in owed:
-                            owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                        owed_shares[user_id] = str(owed_shares[user_id])
+                            owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                        owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                     elif type(owed) == str:
                         owed_shares[user_id] = owed
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users then enter amounts:',
@@ -404,8 +503,9 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                                                             chat_acc.expense.owed_shares) + [
                                               [InlineKeyboardButton('Continue', QueryData.CONTINUE)]]))
             elif query_data == QueryData.CONTINUE:
-                bot.edit_message_reply_markup(chat_id, message_id=msg_id, reply_markup=InlineKeyboardMarkup(
-                    expense_details(InlineKeyboardButton, chat_acc)))
+                bot.edit_message_text(chat_id, message_id=msg_id, text='Set Details of expense',
+                                      reply_markup=InlineKeyboardMarkup(
+                                          expense_details(InlineKeyboardButton, chat_acc)))
             elif query_data == QueryData.CONTINUE_ALIAS:
                 owed_shares = dict()
                 aliases = {alias: cost for _, alias, cost in select_alias(chat_acc.expense.selected_group_id)}
@@ -414,8 +514,8 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                     if type(owed) == dict:
                         owed_shares[user_id] = 0
                         for alias in owed:
-                            owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                        owed_shares[user_id] = str(owed_shares[user_id])
+                            owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                        owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                     elif type(owed) == str:
                         owed_shares[user_id] = owed
                 bot.edit_message_text(chat_id, message_id=msg_id, text='Select users then enter amounts:',
@@ -459,8 +559,8 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                         if type(owed) == dict:
                             owed_shares[user_id] = 0
                             for alias in owed:
-                                owed_shares[user_id] += round(float(owed[alias]) * aliases.get(alias, 0), 2)
-                            owed_shares[user_id] = str(owed_shares[user_id])
+                                owed_shares[user_id] += float(owed[alias]) * aliases.get(alias, 0)
+                            owed_shares[user_id] = str(round(owed_shares[user_id], 2))
                         elif type(owed) == str:
                             owed_shares[user_id] = owed
                     bot.edit_message_text(chat_id, message_id=msg_id, text='Alias deleted successfully\n'

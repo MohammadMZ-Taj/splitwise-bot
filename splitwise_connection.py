@@ -128,6 +128,7 @@ def get_members_share(group_id, func, user_val):
 
 sObj = Splitwise(Consumer_Key, Consumer_Secret, api_key=API_key)
 bot_id: User = sObj.getCurrentUser().getId()
+
 # current = sObj.getCurrentUser()
 # groups: List[Group] = sObj.getGroups()
 # for i in groups:
@@ -142,10 +143,10 @@ bot_id: User = sObj.getCurrentUser().getId()
 #             print(k.getAmount(), k.getCurrencyCode())
 #     print('------------------------')
 #
-#
 # ex = Expense()
 # ex.setCost('100000')
 # ex.setDescription('test')
+# ex.setCurrencyCode('IRR')
 #
 # user1 = ExpenseUser()
 # user2 = ExpenseUser()
@@ -157,8 +158,6 @@ bot_id: User = sObj.getCurrentUser().getId()
 # user2.setId(j.getId())
 # user2.setPaidShare('90000')
 # user2.setOwedShare('80000')
-#
-# ex.setCurrencyCode('IRR')
 # ex.setGroupId(sObj.getGroups()[1].getId())
 # ex.setUsers([user1, user2])
 # a, b = sObj.createExpense(ex)
