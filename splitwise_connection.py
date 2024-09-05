@@ -1,6 +1,7 @@
 from typing import List
 
-from splitwise import Splitwise, Friend, Group, User
+from splitwise import Splitwise, Friend, Group
+from splitwise.balance import Balance
 
 from models import DynamicQueryData
 from settings import Consumer_Key, Consumer_Secret, API_key
@@ -16,6 +17,24 @@ def get_user_name(user_id):
 def get_group_name(group_id):
     group: Group = sObj.getGroup(group_id)
     return group.getName()
+
+
+def get_balance(user_id):
+    groups: List[Group] = sObj.getGroups()
+    res = [f'💰 Balance of **{get_user_name(user_id)}**:']
+    for group in groups:
+        user: List[Friend] = [j for j in group.getMembers() if j.getId() == user_id]
+        if not user:
+            continue
+        user: Friend = user[0]
+        res.append(f'💬 Group: **{group.getName()}**')
+        balances: List[Balance] = user.getBalances()
+        for k in balances:
+            res.append(f'💵 {k.getAmount()} __{k.getCurrencyCode()}__')
+        if not balances:
+            res.append('🚫 Nothing')
+        res.append(5 * '➖')
+    return res
 
 
 def search_user(user_id=None, email=None):
@@ -34,7 +53,7 @@ def get_groups(user_id, func):
         members: List[Friend] = group.getMembers()
         for member in members:
             if user_id == member.getId():
-                group_keys.append(func(group.getName(), DynamicQueryData.GROUP + str(group.getId())))
+                group_keys.append(func(group.getName(), f'{DynamicQueryData.GROUP}{group.getId()}'))
                 break
     return group_keys
 
@@ -127,7 +146,7 @@ def get_members_share(group_id, func, user_val):
 
 
 sObj = Splitwise(Consumer_Key, Consumer_Secret, api_key=API_key)
-bot_id: User = sObj.getCurrentUser().getId()
+bot_id = sObj.getCurrentUser().getId()
 
 # current = sObj.getCurrentUser()
 # groups: List[Group] = sObj.getGroups()

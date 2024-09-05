@@ -17,6 +17,7 @@ class Alias:
 
 class ExpenseStatus:
     def __init__(self):
+        self.expense_id = None
         self.selected_group_id = 0
         self.selected_group_name = ''
         self.amount = '0'
@@ -44,7 +45,7 @@ class Status:
 class QueryData:
     BACK = 's00'
     ADD_EXPENSE = 's01'
-    HISTORY = 's02'
+    BALANCE = 's02'
     CHANGE_ACCOUNT = 's03'
     ABOUT = 's04'
     HELP = 's05'
@@ -76,3 +77,6 @@ class DynamicQueryData:
     MINUS = 'dai'
     ALIAS = 'daj'
     EDIT = 'dak'
+    EDIT_EXPENSE = 'dal'
+    DELETE_EXPENSE = 'dam'
+    OPTIONS = 'dan'

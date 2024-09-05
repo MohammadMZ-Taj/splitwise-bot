@@ -9,39 +9,53 @@ from settings import SENDER_EMAIL, HOST, PORT, PASSWORD, SUBJECT
 
 def home_keys(func):
     return [
-        [func('Add Expense', QueryData.ADD_EXPENSE)],
-        [func('History', QueryData.HISTORY), func('Change Account', QueryData.CHANGE_ACCOUNT)],
-        [func('About', QueryData.ABOUT), func('Help', QueryData.HELP)]
+        [func('➕ Add Expense', QueryData.ADD_EXPENSE)],
+        [func('💵 Balance', QueryData.BALANCE), func('🔄 Change Account', QueryData.CHANGE_ACCOUNT)],
+        [func('ℹ️ About', QueryData.ABOUT), func('❓ Help', QueryData.HELP)]
     ]
 
 
 def change_account_keys(func):
     return [
-        [func('Back', QueryData.BACK)],
-        [func('About', QueryData.ABOUT), func('Help', QueryData.HELP)]]
+        [func('🔙 Back', QueryData.BACK)],
+        [func('ℹ️ About', QueryData.ABOUT), func('❓ Help', QueryData.HELP)]
+    ]
 
 
 def about_help_keys(func):
     return [
-        [func('About', QueryData.ABOUT), func('Help', QueryData.HELP)]
+        [func('ℹ️ About', QueryData.ABOUT), func('❓ Help', QueryData.HELP)]
     ]
 
 
 def split_by_keys(func):
     return [
-        [func('Equally', QueryData.EQUALLY), func('Exact amount', QueryData.EXACT_AMOUNT)],
-        [func('Percentage', QueryData.PERCENTAGE), func('Share', QueryData.SHARE)]
+        [func('⚖️ Equally', QueryData.EQUALLY), func('💵 Exact amount', QueryData.EXACT_AMOUNT)],
+        [func('📊 Percentage', QueryData.PERCENTAGE), func('🔢 Share', QueryData.SHARE)]
     ]
+
+
+def options_keys(func, expense_id, flag=False):
+    if flag:
+        return [
+            [func('🗑️ Delete', f'{DynamicQueryData.DELETE_EXPENSE}{expense_id}')]
+        ]
+    else:
+        return [
+            [func('✏️ Edit', f'{DynamicQueryData.EDIT_EXPENSE}{expense_id}'),
+             func('🗑️ Delete', f'{DynamicQueryData.DELETE_EXPENSE}{expense_id}')],
+            [func('⚙️ Options', f'{DynamicQueryData.OPTIONS}{expense_id}')]
+        ]
 
 
 def expense_details(func, chat_acc):
     return [
-        [func(f'Group: {chat_acc.expense.selected_group_name}', QueryData.ADD_EXPENSE)],
-        [func(f'Description: {chat_acc.expense.description}', QueryData.DESCRIPTION)],
-        [func(f'Amount: {chat_acc.expense.amount}', QueryData.AMOUNT)],
-        [func(f'Currency: {chat_acc.expense.currency}', QueryData.CURRENCY)],
-        [func(f'Split by: {chat_acc.expense.split_type}', QueryData.SPLIT_BY)],
-        [func('Cancel', QueryData.BACK), func('Submit', QueryData.SUBMIT)]
+        [func(f'💬 Group: {chat_acc.expense.selected_group_name}', QueryData.ADD_EXPENSE)],
+        [func(f'📝 Description: {chat_acc.expense.description}', QueryData.DESCRIPTION)],
+        [func(f'💵 Amount: {chat_acc.expense.amount}', QueryData.AMOUNT)],
+        [func(f'💱 Currency: {chat_acc.expense.currency}', QueryData.CURRENCY)],
+        [func(f'🔢 Split by: {chat_acc.expense.split_type}', QueryData.SPLIT_BY)],
+        [func('❌ Cancel', QueryData.BACK), func('✅ Submit', QueryData.SUBMIT)]
     ]
 
 
@@ -61,10 +75,11 @@ def get_aliases(func, group_id, user_id=None, alias_count=None):
                 func('⬇️', f"{DynamicQueryData.ALIAS}{user_id}_{alias}{DynamicQueryData.MINUS}")
             ])
         buttons.extend([
-            [func('Add alias', f'{QueryData.ADD_ALIAS}{user_id}'),
-             func('Edit alias', f'{QueryData.EDIT_ALIAS}{user_id}'),
-             func('Delete alias', f'{QueryData.DELETE_ALIAS}{user_id}')],
-            [func('Continue', QueryData.CONTINUE_ALIAS)]])
+            [func('➕ Add alias', f'{QueryData.ADD_ALIAS}{user_id}'),
+             func('✏️ Edit alias', f'{QueryData.EDIT_ALIAS}{user_id}'),
+             func('🗑️ Delete alias', f'{QueryData.DELETE_ALIAS}{user_id}')],
+            [func('➡️ Continue', QueryData.CONTINUE_ALIAS)]
+        ])
     else:
         for _, alias, cost in select_alias(group_id):
             buttons.append(
