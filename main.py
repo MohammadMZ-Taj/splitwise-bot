@@ -244,6 +244,61 @@ def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
                                                                    '✉️ Then enter your email here to verify',
                                   reply_markup=InlineKeyboardMarkup(change_account_keys(InlineKeyboardButton)))
             chat_acc.status = Status.CHANGE_EMAIL
+        elif query_data == QueryData.ABOUT:
+            bot.edit_message_text(chat_id, message_id=msg_id, text="""ℹ️ **About Splitwise Bot**
+
+Splitwise Bot is designed to simplify the process of managing group expenses using the Splitwise platform. Whether you're sharing costs with friends, family, or colleagues, this bot helps you easily track and split expenses directly from Telegram.
+
+✨ **Features**:
+
+💸 **Add Expenses**: Log and split expenses in multiple ways—equally, by percentage, by shares, or with exact amounts.
+
+💰 **View Balance**: Check your total balance, both what you owe and what you're owed, in __USD__ and __IRR__.
+
+🔄 **Manage Accounts**: Switch between multiple Splitwise accounts easily.
+
+🏷️ **Alias for Expenses**: Quickly add frequently used items with predefined names.
+
+With Splitwise Bot, managing shared expenses has never been easier. Connect your Splitwise account, track expenses, and simplify group payments—right here in Telegram!
+
+For more details, use the **❓ Help** key to learn how to get started.
+""",
+                                  reply_markup=InlineKeyboardMarkup(home_keys(InlineKeyboardButton)))
+        elif query_data == QueryData.HELP:
+            bot.edit_message_text(chat_id, message_id=msg_id, text="""
+🛠️ **Help - Splitwise Bot Usage Guide**
+
+Welcome to Splitwise Bot! Here's how you can use the bot to manage your group expenses with ease.
+
+✨ **Features**:
+- **💸 Add expense**: 
+  - Use this key to log a new expense.
+  - Follow the prompts to select the group, enter a description, amount, paid shares, and select how you want to split the cost:
+    - ⚖️ **Split equally**: Split the expense evenly among the selected members.
+    - 📊 **Split by percentage**: Define each member’s share by percentage.
+    - 📈 **Split by share**: Enter the relative shares for each member.
+    - 💵 **Split by exact amount**: Assign a specific amount to each member.
+  - You can also define 🏷️ **aliases** for frequently used items for faster input next time.
+
+- **💰 Balance**: 
+  - View your current balance, showing how much you owe or are owed in both __USD__ and __IRR__.
+
+- **🔄 Change Account**: 
+  - Switch between your Splitwise accounts if you have more than one.
+
+- **ℹ️ About**: 
+  - Get an overview of the bot and its key features.
+
+- **❓ Help**: 
+  - Display this help guide.
+
+🚀 **Getting Started**:
+1. **🔑 Authenticate**: Link your Splitwise account via email to start using the bot.
+2. **💸 Add Expenses**: Use the **add expense** key to start logging group expenses.
+3. **💰 Check Balance**: Use **balance** to keep track of your overall financial status with your group.
+4. **🔄 Manage Accounts**: Use **change account** if you want to switch between different Splitwise accounts.
+""",
+                                  reply_markup=InlineKeyboardMarkup(home_keys(InlineKeyboardButton)))
         elif query_data == QueryData.BALANCE:
             bot.edit_message_text(chat_id, message_id=msg_id, text='\n'.join(get_balance(chat_acc.account_id)),
                                   reply_markup=InlineKeyboardMarkup(home_keys(InlineKeyboardButton)))

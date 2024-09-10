@@ -44,7 +44,7 @@ def options_keys(func, expense_id, flag=False):
         return [
             [func('✏️ Edit', f'{DynamicQueryData.EDIT_EXPENSE}{expense_id}'),
              func('🗑️ Delete', f'{DynamicQueryData.DELETE_EXPENSE}{expense_id}')],
-            [func('⚙️ Options', f'{DynamicQueryData.OPTIONS}{expense_id}')]
+            [func('🔘️ Options', f'{DynamicQueryData.OPTIONS}{expense_id}')]
         ]
 
 
