@@ -3,6 +3,7 @@ BOT_TOKEN = ''
 API_HASH = ''
 API_ID = ''
 PROXY = {}
+ADMIN_ID = None
 
 DB_HOST = ''
 DB_PORT = None
@@ -19,13 +20,3 @@ PORT = None
 Consumer_Key = ''
 Consumer_Secret = ''
 API_key = ''
-
-
-# # OAuth 1.0
-# Request_Token_URL = ''
-# Access_Token_URL = ''
-# Authorize_URL = ''
-#
-# # OAuth 2.0
-# Token_URL = ''
-# Authorize_URL = ''

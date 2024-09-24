@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from pyrogram import Client
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from splitwise import Expense
@@ -7,11 +8,14 @@ from splitwise.user import ExpenseUser
 
 from db_connection import select_user, add_user, delete_user, select_alias, add_alias, delete_alias, update_alias
 from models import Account, QueryData, Status, ExpenseStatus, DynamicQueryData, Alias
+from monitoring import send_error, alive
 from settings import PROXY, BOT_NAME, BOT_TOKEN, API_HASH, API_ID
 from splitwise_connection import search_user, get_groups, get_members_equally, get_members_exact_amount, \
     get_members_percentage, get_members_share, get_user_name, get_members_paid, get_group_name, sObj, get_balance
 from utils import send_email, expense_details, get_aliases, home_keys, about_help_keys, change_account_keys, \
     split_by_keys, options_keys
+
+scheduler = BackgroundScheduler()
 
 client = Client(name=BOT_NAME, bot_token=BOT_TOKEN, api_hash=API_HASH, api_id=API_ID, proxy=PROXY)
 
@@ -19,6 +23,7 @@ chatId_account = dict()
 
 
 @client.on_message()
+@send_error(client)
 def handle_message(bot: Client, message: Message):  # noqa
     chat_id = message.chat.id
     msg = message.text
@@ -233,6 +238,7 @@ def handle_message(bot: Client, message: Message):  # noqa
 
 
 @client.on_callback_query()
+@send_error(client)
 def handle_callback_query(bot: Client, query: CallbackQuery):  # noqa
     chat_id = query.message.chat.id
     msg_id = query.message.id
@@ -736,5 +742,8 @@ Welcome to Splitwise Bot! Here's how you can use the bot to manage your group ex
 for rec in select_user():
     chatId_account[rec[0]] = Account(rec[1], rec[2])
     chatId_account[rec[0]].verification.is_verify = True
+
+scheduler.add_job(alive, trigger='interval', args=(client,), start_date=datetime.now().date(), hours=2)
+scheduler.start()
 
 client.run()
